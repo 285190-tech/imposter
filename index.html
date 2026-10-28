@@ -44,17 +44,23 @@
     color: #fff; font-weight: 600; width: 100%; margin-top: 14px; padding: 12px 16px;
   }
   button.primary:hover { background: linear-gradient(180deg, #4a88ff, #3a75ea); }
+  button.spectate {
+    width: 100%; margin-top: 10px; padding: 12px 16px;
+    background: #1b2029; border-color: var(--border); color: var(--muted); font-size: 14px;
+  }
+  button.spectate:hover { color: var(--text); }
   .topbar {
     display: flex; justify-content: space-between; align-items: center;
-    font-size: 13px; color: var(--muted); margin-bottom: 12px;
+    font-size: 13px; color: var(--muted); margin-bottom: 12px; gap: 10px;
   }
   .pill {
     background: #1b2029; border: 1px solid var(--border); padding: 4px 10px;
     border-radius: 999px; font-size: 12px; color: var(--text);
   }
+  .pill.live { background: #1d3a2a; border-color: #24503a; color: #6ee7a1; }
   #status { min-height: 22px; font-size: 14px; color: var(--muted); margin: 4px 0 12px; }
   #status.error { color: var(--danger); }
-  #players { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  #players { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
   .card {
     background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
     padding: 14px; transition: border-color .2s ease, box-shadow .2s ease;
@@ -74,6 +80,11 @@
   .secret b { color: var(--text); }
   .clue { font-size: 14px; color: var(--text); font-style: italic; }
   .clue.thinking { color: var(--muted); }
+  .thought {
+    font-size: 12px; color: #8892a6; margin-top: 8px; padding: 7px 9px;
+    background: #0b0f16; border-radius: 6px; border-left: 2px solid var(--accent);
+    line-height: 1.45; font-style: italic;
+  }
   .voteline { font-size: 12px; color: var(--muted); margin-top: 8px; }
   #actionArea { margin-top: 18px; }
   .inputrow { display: flex; gap: 10px; }
@@ -92,6 +103,7 @@
   .scorerow { display: flex; justify-content: space-between; font-size: 14px; padding: 6px 0; border-bottom: 1px solid #222631; }
   .scorerow:last-child { border-bottom: none; }
   .apiwarn { background: #321616; border: 1px solid #5a2424; color: #ff9b9b; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; }
+  #autoTimer { opacity: .7; font-weight: 400; }
   @media (max-width: 520px) { .row { flex-direction: column; } #players { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -119,6 +131,7 @@
       </div>
     </div>
     <button id="startBtn" class="primary">Start Game</button>
+    <button id="spectateBtn" class="spectate">👁 Spectate — 5 bots play each other</button>
   </div>
 
   <div id="game" hidden>
@@ -151,10 +164,13 @@
   ];
   const BOT_NAMES = ["Milo","Nova","Jax","Iris","Rex","Luna","Finn","Zara","Otis","Pip"];
   const MODEL = "mistral-small-latest";
+  const SPECTATE_COUNT = 5;
+  const AUTO_ADVANCE_SECONDS = 9;
 
   const state = {
     players: [], scores: {}, round: 0, word: "", hint: "",
-    phase: "lobby", turnOrder: [], turnIndex: 0, reveal: null
+    phase: "lobby", turnOrder: [], turnIndex: 0, reveal: null,
+    spectate: false, _advanceTimer: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -185,7 +201,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: MODEL, messages, temperature: 0.9, max_tokens: 120,
+          model: MODEL, messages, temperature: 0.9, max_tokens: 180,
           response_format: { type: "json_object" }, ...opts
         })
       });
@@ -211,6 +227,7 @@
     return true;
   }
   function fallbackClue() { return rand(["common","classic","popular","familiar","interesting"]); }
+  function clip(s, n) { return String(s || "").slice(0, n); }
 
   async function botClue(bot) {
     const cluesSoFar = state.players.filter((p) => p.clue).map((p) => `${p.name}: "${p.clue}"`).join("\n") || "(none yet)";
@@ -225,7 +242,7 @@ Clues given so far:
 ${cluesSoFar}
 
 Give ONE short clue (1-3 words) related to your secret. If you are the imposter, bluff plausibly using your hint so you blend in. Never say the secret word or hint directly.
-Reply with JSON: {"clue": "..."}`;
+Reply with JSON: {"thinking": "<one short sentence in your own voice>", "clue": "..."}`;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -233,9 +250,13 @@ Reply with JSON: {"clue": "..."}`;
           { role: "system", content: sys }, { role: "user", content: user }
         ]);
         const c = (out.clue || "").toString().trim().replace(/^["']+|["']+$/g, "");
-        if (validClue(c, bot)) return c;
+        if (validClue(c, bot)) {
+          bot.thought = clip(out.thinking, 180);
+          return c;
+        }
       } catch (e) { console.warn("botClue", e); }
     }
+    bot.thought = "";
     return fallbackClue();
   }
 
@@ -253,7 +274,7 @@ Clues this round:
 ${clueList}
 
 You cannot vote for yourself. Choose who you think is the imposter from: ${others}.
-Reply with JSON: {"vote": "<exact name>", "reason": "<one short sentence>"}`;
+Reply with JSON: {"thinking": "<one short sentence in your own voice>", "vote": "<exact name>", "reason": "<one short sentence>"}`;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -262,23 +283,30 @@ Reply with JSON: {"vote": "<exact name>", "reason": "<one short sentence>"}`;
         ]);
         const name = (out.vote || "").toString().trim();
         const target = state.players.find((p) => p.id !== bot.id && p.name.toLowerCase() === name.toLowerCase());
-        if (target) return { vote: target.id, reason: (out.reason || "").toString().slice(0, 140) };
+        if (target) return {
+          vote: target.id,
+          reason: clip(out.reason, 140),
+          thought: clip(out.thinking, 180)
+        };
       } catch (e) { console.warn("botVote", e); }
     }
-    return { vote: rand(state.players.filter((p) => p.id !== bot.id)).id, reason: "gut feeling" };
+    return { vote: rand(state.players.filter((p) => p.id !== bot.id)).id, reason: "gut feeling", thought: "" };
   }
 
   async function botGuess(imposter) {
     const sys = `You are ${imposter.name}. Reply ONLY with JSON.`;
     const user = `You were caught as the imposter. Your hint was "${imposter.secret}". Guess the real secret word.
-Reply with JSON: {"guess": "..."}`;
+Reply with JSON: {"thinking": "<one short sentence in your own voice>", "guess": "..."}`;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const out = await callMistral([
           { role: "system", content: sys }, { role: "user", content: user }
         ]);
         const g = (out.guess || "").toString().trim();
-        if (g) return g;
+        if (g) {
+          imposter.thought = clip(out.thinking, 180);
+          return g;
+        }
       } catch (e) { console.warn("botGuess", e); }
     }
     return "???";
@@ -291,23 +319,38 @@ Reply with JSON: {"guess": "..."}`;
     return g === w || g.includes(w) || w.includes(g);
   }
 
+  function newPlayers(list) {
+    state.players = list;
+    state.scores = {};
+    state.players.forEach((p) => (state.scores[p.name] = 0));
+    state.round = 0;
+  }
+
   function startGame() {
     const name = ($("playerName").value || "You").trim().slice(0, 20) || "You";
     const botCount = parseInt($("botCount").value, 10);
     const names = shuffle(BOT_NAMES).slice(0, botCount);
-    state.players = [
+    newPlayers([
       { id: "p0", name, isBot: false },
       ...names.map((n, i) => ({ id: "p" + (i + 1), name: n, isBot: true }))
-    ];
-    state.scores = {};
-    state.players.forEach((p) => (state.scores[p.name] = 0));
-    state.round = 0;
+    ]);
+    state.spectate = false;
+    $("lobby").hidden = true;
+    $("game").hidden = false;
+    startRound();
+  }
+
+  function startSpectate() {
+    const names = shuffle(BOT_NAMES).slice(0, SPECTATE_COUNT);
+    newPlayers(names.map((n, i) => ({ id: "p" + i, name: n, isBot: true })));
+    state.spectate = true;
     $("lobby").hidden = true;
     $("game").hidden = false;
     startRound();
   }
 
   function startRound() {
+    if (state._advanceTimer) { clearInterval(state._advanceTimer.interval); state._advanceTimer = null; }
     state.round++;
     state.phase = "clue";
     state.turnIndex = 0;
@@ -328,6 +371,7 @@ Reply with JSON: {"guess": "..."}`;
       p.clue = "";
       p.vote = null;
       p.voteReason = "";
+      p.thought = "";
     });
     state.turnOrder = shuffle(state.players.map((p) => p.id));
     render();
@@ -376,6 +420,13 @@ Reply with JSON: {"guess": "..."}`;
     state.phase = "vote";
     state.players.forEach((p) => { p.vote = null; p.voteReason = ""; });
     render();
+
+    if (state.spectate) {
+      setStatus("Bots are voting…");
+      autoVoteAll();
+      return;
+    }
+
     setStatus("Who is the imposter?");
     const area = $("actionArea");
     area.innerHTML = "";
@@ -389,6 +440,20 @@ Reply with JSON: {"guess": "..."}`;
     });
   }
 
+  async function autoVoteAll() {
+    for (const p of state.players) {
+      if (!p.isBot) continue;
+      await sleep(650);
+      const v = await botVote(p);
+      p.vote = v.vote;
+      p.voteReason = v.reason;
+      p.thought = v.thought || p.thought;
+      render();
+    }
+    setStatus("");
+    resolveVotes();
+  }
+
   async function humanVoted(targetId) {
     const me = state.players.find((p) => !p.isBot);
     me.vote = targetId;
@@ -400,6 +465,7 @@ Reply with JSON: {"guess": "..."}`;
       const v = await botVote(p);
       p.vote = v.vote;
       p.voteReason = v.reason;
+      p.thought = v.thought || p.thought;
       render();
     }
     setStatus("");
@@ -424,6 +490,7 @@ Reply with JSON: {"guess": "..."}`;
       await sleep(800);
       if (imposter.isBot) {
         const guess = await botGuess(imposter);
+        render();
         finishRound({ caught: true, guess, correct: checkGuess(guess, state.word), leaders, counts });
       } else {
         setStatus("You were caught. Guess the secret word!");
@@ -468,30 +535,39 @@ Reply with JSON: {"guess": "..."}`;
   function render() {
     $("roundLabel").textContent = "Round " + state.round;
     const phaseNames = { clue: "Clue phase", vote: "Voting", guess: "Final guess", reveal: "Reveal" };
-    $("phaseLabel").textContent = phaseNames[state.phase] || "";
+    const phaseText = phaseNames[state.phase] || "";
+    $("phaseLabel").textContent = state.spectate ? "👁 Spectating · " + phaseText : phaseText;
+    $("phaseLabel").classList.toggle("live", state.spectate);
 
     const grid = $("players");
     grid.innerHTML = "";
+    const showRolesNow = state.spectate || state.phase === "reveal";
+
     state.players.forEach((p) => {
       const card = document.createElement("div");
       card.className = "card";
-      if (state.phase === "reveal" && p.role === "imposter") card.classList.add("imposter");
+      if (showRolesNow && p.role === "imposter") card.classList.add("imposter");
       const isTurn = state.phase === "clue" && state.turnOrder[state.turnIndex] === p.id;
       if (isTurn) card.classList.add("active");
 
       let html = `<div class="card-head"><span class="pname">${escapeHtml(p.name)}</span>`;
       html += p.isBot ? `<span class="badge bot">BOT</span>` : `<span class="badge you">YOU</span>`;
-      if (state.phase === "reveal" && p.role === "imposter") html += `<span class="badge imp">IMPOSTER</span>`;
+      if (showRolesNow && p.role === "imposter") html += `<span class="badge imp">IMPOSTER</span>`;
       html += `</div>`;
 
-      if (!p.isBot) {
-        const label = p.role === "imposter" ? "Your hint" : "Your word";
+      const revealSecret = !p.isBot || state.spectate;
+      if (revealSecret) {
+        const label = p.role === "imposter" ? "Hint" : "Word";
         html += `<div class="secret">${label}: <b>${escapeHtml(p.secret)}</b></div>`;
       }
       if (p.clue) html += `<div class="clue">“${escapeHtml(p.clue)}”</div>`;
       else if (isTurn) html += `<div class="clue thinking">${p.isBot ? "thinking…" : "your turn…"}</div>`;
 
-      if (state.phase === "reveal" && p.vote) {
+      if (state.spectate && p.thought) {
+        html += `<div class="thought">💭 ${escapeHtml(p.thought)}</div>`;
+      }
+
+      if ((state.phase === "reveal" || state.phase === "guess") && p.vote) {
         const t = state.players.find((x) => x.id === p.vote);
         html += `<div class="voteline">voted ${escapeHtml(t ? t.name : "?")}</div>`;
       }
@@ -530,18 +606,37 @@ Reply with JSON: {"guess": "..."}`;
     Object.entries(state.scores).sort((a, b) => b[1] - a[1]).forEach(([n, s]) => {
       html += `<div class="scorerow"><span>${escapeHtml(n)}</span><b>${s}</b></div>`;
     });
-    html += `<button id="nextRoundBtn" class="primary">Next Round</button>`;
+
+    const btnLabel = state.spectate
+      ? `Next Round <span id="autoTimer">(auto in ${AUTO_ADVANCE_SECONDS}s)</span>`
+      : "Next Round";
+    html += `<button id="nextRoundBtn" class="primary">${btnLabel}</button>`;
 
     area.innerHTML = html;
     area.hidden = false;
-    $("nextRoundBtn").onclick = () => {
+
+    const advance = () => {
+      if (state._advanceTimer) { clearInterval(state._advanceTimer.interval); state._advanceTimer = null; }
       area.hidden = true;
       area.innerHTML = "";
       startRound();
     };
+    $("nextRoundBtn").onclick = advance;
+
+    if (state.spectate) {
+      let remaining = AUTO_ADVANCE_SECONDS;
+      const iv = setInterval(() => {
+        remaining--;
+        const timerEl = $("autoTimer");
+        if (timerEl && timerEl.isConnected) timerEl.textContent = `(auto in ${Math.max(remaining, 0)}s)`;
+        if (remaining <= 0) advance();
+      }, 1000);
+      state._advanceTimer = { interval: iv };
+    }
   }
 
   $("startBtn").onclick = startGame;
+  $("spectateBtn").onclick = startSpectate;
   $("playerName").addEventListener("keydown", (e) => { if (e.key === "Enter") startGame(); });
 </script>
 </body>
