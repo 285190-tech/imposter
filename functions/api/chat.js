@@ -1,36 +1,41 @@
-const ALLOWED = new Set(["mistral-small-latest", "ministral-8b-latest", "open-mistral-nemo"]);
+function json(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function stripFences(s) {
+  return String(s || "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+}
 
 export async function onRequestPost(context) {
   const { request, env } = context;
 
-  if (!env.MISTRAL_API_KEY) {
-    return new Response(JSON.stringify({ error: "MISTRAL_API_KEY not set" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+  if (!env.AI) {
+    return json({ error: "AI binding not configured. Add an AI binding named 'AI' to this project." }, 500);
   }
 
   let payload;
   try {
     payload = await request.json();
   } catch {
-    return new Response(JSON.stringify({ error: "bad json" }), { status: 400 });
+    return json({ error: "bad json" }, 400);
   }
 
-  if (!ALLOWED.has(payload.model)) payload.model = "mistral-small-latest";
-  if (!payload.max_tokens || payload.max_tokens > 200) payload.max_tokens = 200;
+  const model = "@cf/meta/llama-3.1-8b-instruct";
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  const max_tokens = Math.min(payload.max_tokens || 200, 300);
+  const temperature = typeof payload.temperature === "number" ? payload.temperature : 0.9;
 
-  const upstream = await fetch("https://api.mistral.ai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.MISTRAL_API_KEY}`,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: { "Content-Type": "application/json" },
-  });
+  try {
+    const ai = await env.AI.run(model, { messages, max_tokens, temperature });
+    const content = stripFences(ai.response);
+    return json({ choices: [{ message: { content } }] });
+  } catch (e) {
+    return json({ error: "Workers AI call failed", detail: String(e) }, 500);
+  }
 }
