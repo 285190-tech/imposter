@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Imposter</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a;
+    --text: #e6e9ef; --muted: #8b93a3; --accent: #6ea8fe; --danger: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 50% -10%, #1a2030 0%, var(--bg) 60%) fixed;
+  }
+  .app { max-width: 880px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 28px; letter-spacing: -0.02em; margin: 0 0 4px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; line-height: 1.5; }
+  .panel {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--panel2) 100%);
+    border: 1px solid var(--border); border-radius: 14px; padding: 18px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input, select {
+    width: 100%; background: #0d1016; border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px 12px; font-size: 15px; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--border);
+    background: #232834; color: var(--text); padding: 10px 16px;
+    transition: transform .05s ease, background .15s ease;
+  }
+  button:hover { background: #2a3040; }
+  button:active { transform: translateY(1px); }
+  button.primary {
+    background: linear-gradient(180deg, #3b7dff, #2f6ae0); border-color: #2f6ae0;
+    color: #fff; font-weight: 600; width: 100%; margin-top: 14px; padding: 12px 16px;
+  }
+  button.primary:hover { background: linear-gradient(180deg, #4a88ff, #3a75ea); }
+  .topbar {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: var(--muted); margin-bottom: 12px;
+  }
+  .pill {
+    background: #1b2029; border: 1px solid var(--border); padding: 4px 10px;
+    border-radius: 999px; font-size: 12px; color: var(--text);
+  }
+  #status { min-height: 22px; font-size: 14px; color: var(--muted); margin: 4px 0 12px; }
+  #status.error { color: var(--danger); }
+  #players { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  .card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 24px -8px var(--accent); }
+  .card.imposter { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+  .card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .pname { font-weight: 600; font-size: 15px; }
+  .badge { font-size: 10px; letter-spacing: .08em; padding: 2px 6px; border-radius: 6px; text-transform: uppercase; font-weight: 700; }
+  .badge.you { background: #1d3a2a; color: #6ee7a1; border: 1px solid #24503a; }
+  .badge.bot { background: #1a2740; color: #8bb8ff; border: 1px solid #24365a; }
+  .badge.imp { background: #3a1d1d; color: #ff9b9b; border: 1px solid #5a2424; }
+  .secret {
+    font-size: 12px; color: var(--muted); background: #0d1016; border: 1px dashed #2a2f3a;
+    border-radius: 8px; padding: 6px 8px; margin-bottom: 8px;
+  }
+  .secret b { color: var(--text); }
+  .clue { font-size: 14px; color: var(--text); font-style: italic; }
+  .clue.thinking { color: var(--muted); }
+  .voteline { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  #actionArea { margin-top: 18px; }
+  .inputrow { display: flex; gap: 10px; }
+  .inputrow input { flex: 1; }
+  .votebtn { margin: 0 8px 8px 0; }
+  #revealArea { margin-top: 22px; }
+  .banner { font-size: 20px; font-weight: 700; padding: 14px 16px; border-radius: 12px; margin-bottom: 14px; text-align: center; letter-spacing: -0.01em; }
+  .banner.crew { background: linear-gradient(180deg, #13321f, #0f2418); border: 1px solid #24503a; color: #7ef0a8; }
+  .banner.imp { background: linear-gradient(180deg, #321616, #241010); border: 1px solid #5a2424; color: #ff9b9b; }
+  .reveal-rows { display: grid; gap: 8px; margin-bottom: 16px; }
+  .reveal-rows > div { display: flex; justify-content: space-between; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+  .reveal-rows span { color: var(--muted); }
+  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 16px 0 8px; }
+  .voterow { font-size: 13px; padding: 6px 0; border-bottom: 1px solid #222631; }
+  .reason { color: var(--muted); }
+  .scorerow { display: flex; justify-content: space-between; font-size: 14px; padding: 6px 0; border-bottom: 1px solid #222631; }
+  .scorerow:last-child { border-bottom: none; }
+  .apiwarn { background: #321616; border: 1px solid #5a2424; color: #ff9b9b; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; }
+  @media (max-width: 520px) { .row { flex-direction: column; } #players { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Imposter<span>.</span></h1>
+  <div class="sub">Everyone gets the same secret word — except one player, who only gets a vague hint. Give clues, then vote out the imposter.</div>
+
+  <div id="apiwarn" class="apiwarn" hidden></div>
+
+  <div id="lobby" class="panel">
+    <div class="row">
+      <div>
+        <label for="playerName">Your name</label>
+        <input id="playerName" maxlength="20" value="You" autocomplete="off">
+      </div>
+      <div>
+        <label for="botCount">Bots</label>
+        <select id="botCount">
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+      </div>
+    </div>
+    <button id="startBtn" class="primary">Start Game</button>
+  </div>
+
+  <div id="game" hidden>
+    <div class="topbar">
+      <span id="roundLabel"></span>
+      <span id="phaseLabel" class="pill"></span>
+    </div>
+    <div id="status"></div>
+    <div id="players"></div>
+    <div id="actionArea"></div>
+    <div id="revealArea" hidden></div>
+  </div>
+</div>
+
+<script>
+  const WORDS = [
+    ["pizza", "Italian food"], ["ocean", "a large body of water"], ["guitar", "a musical instrument"],
+    ["winter", "a season"], ["coffee", "a hot drink"], ["elephant", "a large animal"],
+    ["rainbow", "a colorful natural phenomenon"], ["castle", "a large old building"], ["volcano", "a natural disaster"],
+    ["sushi", "Japanese food"], ["airport", "a travel location"], ["library", "a place with shelves"],
+    ["hospital", "a place with doctors"], ["cactus", "a plant"], ["snow", "weather"],
+    ["dragon", "a mythical creature"], ["piano", "a musical instrument"], ["bicycle", "a vehicle"],
+    ["camera", "a device"], ["chocolate", "a dessert"], ["moon", "a celestial object"],
+    ["firefighter", "a job"], ["plane", "a vehicle"], ["submarine", "a vehicle"],
+    ["wizard", "a fantasy character"], ["pirate", "a fantasy character"], ["vampire", "a monster"],
+    ["robot", "a machine"], ["desert", "a landscape"], ["jungle", "a landscape"],
+    ["spider", "an animal"], ["penguin", "an animal"], ["octopus", "an animal"],
+    ["snowman", "a winter thing"], ["balloon", "a party item"], ["umbrella", "an object for weather"],
+    ["sandwich", "a food"], ["cereal", "a breakfast item"], ["pancake", "a breakfast food"], ["waffle", "a breakfast food"]
+  ];
+  const BOT_NAMES = ["Milo","Nova","Jax","Iris","Rex","Luna","Finn","Zara","Otis","Pip"];
+  const MODEL = "mistral-small-latest";
+
+  const state = {
+    players: [], scores: {}, round: 0, word: "", hint: "",
+    phase: "lobby", turnOrder: [], turnIndex: 0, reveal: null
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+  function setStatus(text, isError) {
+    const el = $("status");
+    el.textContent = text || "";
+    el.classList.toggle("error", !!isError);
+  }
+  function showApiWarning() {
+    const el = $("apiwarn");
+    el.hidden = false;
+    el.textContent = "Bot API isn't responding. Check that the Cloudflare Pages Function is deployed and MISTRAL_API_KEY is set. Bots will use fallback clues.";
+  }
+
+  async function callMistral(messages, opts = {}) {
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL, messages, temperature: 0.9, max_tokens: 120,
+          response_format: { type: "json_object" }, ...opts
+        })
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      const content = data?.choices?.[0]?.message?.content;
+      if (!content) return {};
+      try { return JSON.parse(content); } catch { return {}; }
+    } catch (e) {
+      showApiWarning();
+      throw e;
+    }
+  }
+
+  function validClue(c, bot) {
+    if (!c) return false;
+    c = c.trim();
+    if (!c || c.length > 40) return false;
+    if (c.split(/\s+/).length > 5) return false;
+    const lc = c.toLowerCase();
+    if (bot.secret && lc.includes(bot.secret.toLowerCase())) return false;
+    if (state.players.some((p) => p.id !== bot.id && p.clue && p.clue.toLowerCase() === lc)) return false;
+    return true;
+  }
+  function fallbackClue() { return rand(["common","classic","popular","familiar","interesting"]); }
+
+  async function botClue(bot) {
+    const cluesSoFar = state.players.filter((p) => p.clue).map((p) => `${p.name}: "${p.clue}"`).join("\n") || "(none yet)";
+    const isImp = bot.role === "imposter";
+    const secretLine = isImp
+      ? `You are the IMPOSTER. You do NOT know the real word. Your only hint is: "${bot.secret}".`
+      : `The secret word is: "${bot.secret}".`;
+    const sys = `You are ${bot.name}, a player in a social deduction word game. Everyone shares a secret word except one imposter, who only gets a vague hint. Reply ONLY with JSON.`;
+    const user = `${secretLine}
+
+Clues given so far:
+${cluesSoFar}
+
+Give ONE short clue (1-3 words) related to your secret. If you are the imposter, bluff plausibly using your hint so you blend in. Never say the secret word or hint directly.
+Reply with JSON: {"clue": "..."}`;
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const out = await callMistral([
+          { role: "system", content: sys }, { role: "user", content: user }
+        ]);
+        const c = (out.clue || "").toString().trim().replace(/^["']+|["']+$/g, "");
+        if (validClue(c, bot)) return c;
+      } catch (e) { console.warn("botClue", e); }
+    }
+    return fallbackClue();
+  }
+
+  async function botVote(bot) {
+    const clueList = state.players.map((p) => `${p.name}: "${p.clue || "(no clue)"}"`).join("\n");
+    const isImp = bot.role === "imposter";
+    const secretLine = isImp
+      ? `You are the IMPOSTER. Your hint was "${bot.secret}". You do not know the real word.`
+      : `You are crew. The secret word is "${bot.secret}".`;
+    const others = state.players.filter((p) => p.id !== bot.id).map((p) => p.name).join(", ");
+    const sys = `You are ${bot.name}, playing a social deduction word game. Reply ONLY with JSON.`;
+    const user = `${secretLine}
+
+Clues this round:
+${clueList}
+
+You cannot vote for yourself. Choose who you think is the imposter from: ${others}.
+Reply with JSON: {"vote": "<exact name>", "reason": "<one short sentence>"}`;
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const out = await callMistral([
+          { role: "system", content: sys }, { role: "user", content: user }
+        ]);
+        const name = (out.vote || "").toString().trim();
+        const target = state.players.find((p) => p.id !== bot.id && p.name.toLowerCase() === name.toLowerCase());
+        if (target) return { vote: target.id, reason: (out.reason || "").toString().slice(0, 140) };
+      } catch (e) { console.warn("botVote", e); }
+    }
+    return { vote: rand(state.players.filter((p) => p.id !== bot.id)).id, reason: "gut feeling" };
+  }
+
+  async function botGuess(imposter) {
+    const sys = `You are ${imposter.name}. Reply ONLY with JSON.`;
+    const user = `You were caught as the imposter. Your hint was "${imposter.secret}". Guess the real secret word.
+Reply with JSON: {"guess": "..."}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const out = await callMistral([
+          { role: "system", content: sys }, { role: "user", content: user }
+        ]);
+        const g = (out.guess || "").toString().trim();
+        if (g) return g;
+      } catch (e) { console.warn("botGuess", e); }
+    }
+    return "???";
+  }
+
+  function checkGuess(guess, word) {
+    const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+    const g = norm(guess), w = norm(word);
+    if (!g) return false;
+    return g === w || g.includes(w) || w.includes(g);
+  }
+
+  function startGame() {
+    const name = ($("playerName").value || "You").trim().slice(0, 20) || "You";
+    const botCount = parseInt($("botCount").value, 10);
+    const names = shuffle(BOT_NAMES).slice(0, botCount);
+    state.players = [
+      { id: "p0", name, isBot: false },
+      ...names.map((n, i) => ({ id: "p" + (i + 1), name: n, isBot: true }))
+    ];
+    state.scores = {};
+    state.players.forEach((p) => (state.scores[p.name] = 0));
+    state.round = 0;
+    $("lobby").hidden = true;
+    $("game").hidden = false;
+    startRound();
+  }
+
+  function startRound() {
+    state.round++;
+    state.phase = "clue";
+    state.turnIndex = 0;
+    state.reveal = null;
+    $("revealArea").hidden = true;
+    $("revealArea").innerHTML = "";
+    $("actionArea").innerHTML = "";
+    setStatus("");
+
+    const pair = rand(WORDS);
+    state.word = pair[0];
+    state.hint = pair[1];
+
+    const imposterIdx = Math.floor(Math.random() * state.players.length);
+    state.players.forEach((p, i) => {
+      p.role = i === imposterIdx ? "imposter" : "crew";
+      p.secret = p.role === "imposter" ? state.hint : state.word;
+      p.clue = "";
+      p.vote = null;
+      p.voteReason = "";
+    });
+    state.turnOrder = shuffle(state.players.map((p) => p.id));
+    render();
+    nextTurn();
+  }
+
+  async function nextTurn() {
+    if (state.turnIndex >= state.turnOrder.length) { startVote(); return; }
+    const player = state.players.find((p) => p.id === state.turnOrder[state.turnIndex]);
+    render();
+    if (player.isBot) {
+      setStatus(`${player.name} is thinking…`);
+      await sleep(700);
+      player.clue = await botClue(player);
+      render();
+      setStatus("");
+      await sleep(900);
+      state.turnIndex++;
+      nextTurn();
+    } else {
+      setStatus("Your turn — give a clue.");
+      showClueInput(player);
+    }
+  }
+
+  function showClueInput(player) {
+    const area = $("actionArea");
+    area.innerHTML = `<div class="inputrow"><input id="clueInput" maxlength="40" placeholder="one word or short phrase…" autocomplete="off"><button id="clueBtn">Submit</button></div>`;
+    const input = $("clueInput");
+    setTimeout(() => input.focus(), 30);
+    const submit = () => {
+      const v = input.value.trim();
+      if (!v) return;
+      area.innerHTML = "";
+      setStatus("");
+      player.clue = v;
+      render();
+      state.turnIndex++;
+      nextTurn();
+    };
+    $("clueBtn").onclick = submit;
+    input.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+  }
+
+  function startVote() {
+    state.phase = "vote";
+    state.players.forEach((p) => { p.vote = null; p.voteReason = ""; });
+    render();
+    setStatus("Who is the imposter?");
+    const area = $("actionArea");
+    area.innerHTML = "";
+    const me = state.players.find((p) => !p.isBot);
+    state.players.filter((p) => p.id !== me.id).forEach((p) => {
+      const b = document.createElement("button");
+      b.className = "votebtn";
+      b.textContent = p.name;
+      b.onclick = () => humanVoted(p.id);
+      area.appendChild(b);
+    });
+  }
+
+  async function humanVoted(targetId) {
+    const me = state.players.find((p) => !p.isBot);
+    me.vote = targetId;
+    $("actionArea").innerHTML = "";
+    for (const p of state.players) {
+      if (!p.isBot) continue;
+      setStatus(`${p.name} is voting…`);
+      await sleep(650);
+      const v = await botVote(p);
+      p.vote = v.vote;
+      p.voteReason = v.reason;
+      render();
+    }
+    setStatus("");
+    resolveVotes();
+  }
+
+  async function resolveVotes() {
+    const counts = {};
+    state.players.forEach((p) => { if (p.vote) counts[p.vote] = (counts[p.vote] || 0) + 1; });
+    let max = 0, leaders = [];
+    for (const [id, c] of Object.entries(counts)) {
+      if (c > max) { max = c; leaders = [id]; }
+      else if (c === max) leaders.push(id);
+    }
+    const imposter = state.players.find((p) => p.role === "imposter");
+    const caught = leaders.length === 1 && leaders[0] === imposter.id;
+
+    if (caught) {
+      state.phase = "guess";
+      render();
+      setStatus("The imposter was caught and gets one guess…");
+      await sleep(800);
+      if (imposter.isBot) {
+        const guess = await botGuess(imposter);
+        finishRound({ caught: true, guess, correct: checkGuess(guess, state.word), leaders, counts });
+      } else {
+        setStatus("You were caught. Guess the secret word!");
+        showHumanGuess(leaders, counts);
+      }
+    } else {
+      finishRound({ caught: false, leaders, counts });
+    }
+  }
+
+  function showHumanGuess(leaders, counts) {
+    const area = $("actionArea");
+    area.innerHTML = `<div class="inputrow"><input id="guessInput" placeholder="the secret word…" autocomplete="off"><button id="guessBtn">Guess</button></div>`;
+    const input = $("guessInput");
+    setTimeout(() => input.focus(), 30);
+    const submit = () => {
+      const g = input.value.trim();
+      if (!g) return;
+      area.innerHTML = "";
+      finishRound({ caught: true, guess: g, correct: checkGuess(g, state.word), leaders, counts });
+    };
+    $("guessBtn").onclick = submit;
+    input.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+  }
+
+  function finishRound(info) {
+    state.phase = "reveal";
+    const imposter = state.players.find((p) => p.role === "imposter");
+    const crewWins = info.caught && !info.correct;
+    state.reveal = {
+      caught: info.caught, guess: info.guess || "", correct: !!info.correct,
+      crewWins, imposterId: imposter.id, leaders: info.leaders || [], counts: info.counts || {}
+    };
+    if (crewWins) state.players.filter((p) => p.role === "crew").forEach((p) => (state.scores[p.name] = (state.scores[p.name] || 0) + 1));
+    else state.scores[imposter.name] = (state.scores[imposter.name] || 0) + 1;
+    setStatus("");
+    $("actionArea").innerHTML = "";
+    render();
+    renderReveal();
+  }
+
+  function render() {
+    $("roundLabel").textContent = "Round " + state.round;
+    const phaseNames = { clue: "Clue phase", vote: "Voting", guess: "Final guess", reveal: "Reveal" };
+    $("phaseLabel").textContent = phaseNames[state.phase] || "";
+
+    const grid = $("players");
+    grid.innerHTML = "";
+    state.players.forEach((p) => {
+      const card = document.createElement("div");
+      card.className = "card";
+      if (state.phase === "reveal" && p.role === "imposter") card.classList.add("imposter");
+      const isTurn = state.phase === "clue" && state.turnOrder[state.turnIndex] === p.id;
+      if (isTurn) card.classList.add("active");
+
+      let html = `<div class="card-head"><span class="pname">${escapeHtml(p.name)}</span>`;
+      html += p.isBot ? `<span class="badge bot">BOT</span>` : `<span class="badge you">YOU</span>`;
+      if (state.phase === "reveal" && p.role === "imposter") html += `<span class="badge imp">IMPOSTER</span>`;
+      html += `</div>`;
+
+      if (!p.isBot) {
+        const label = p.role === "imposter" ? "Your hint" : "Your word";
+        html += `<div class="secret">${label}: <b>${escapeHtml(p.secret)}</b></div>`;
+      }
+      if (p.clue) html += `<div class="clue">“${escapeHtml(p.clue)}”</div>`;
+      else if (isTurn) html += `<div class="clue thinking">${p.isBot ? "thinking…" : "your turn…"}</div>`;
+
+      if (state.phase === "reveal" && p.vote) {
+        const t = state.players.find((x) => x.id === p.vote);
+        html += `<div class="voteline">voted ${escapeHtml(t ? t.name : "?")}</div>`;
+      }
+      card.innerHTML = html;
+      grid.appendChild(card);
+    });
+  }
+
+  function renderReveal() {
+    const r = state.reveal;
+    const imposter = state.players.find((p) => p.id === r.imposterId);
+    const area = $("revealArea");
+
+    let html = `<div class="banner ${r.crewWins ? "crew" : "imp"}">${r.crewWins ? "Crew wins!" : "Imposter wins!"}</div>`;
+    html += `<div class="reveal-rows">`;
+    html += `<div><span>Secret word</span><b>${escapeHtml(state.word)}</b></div>`;
+    html += `<div><span>Imposter's hint</span><b>${escapeHtml(state.hint)}</b></div>`;
+    html += `<div><span>Imposter</span><b>${escapeHtml(imposter.name)}</b></div>`;
+    if (r.caught) {
+      html += `<div><span>Their guess</span><b>${escapeHtml(r.guess || "—")} ${r.correct ? "✅ correct" : "❌ wrong"}</b></div>`;
+    } else {
+      const leaderNames = (r.leaders || []).map((id) => (state.players.find((x) => x.id === id) || {}).name || "?");
+      const label = leaderNames.length > 1 ? `tie: ${leaderNames.join(", ")}` : (leaderNames[0] || "nobody");
+      html += `<div><span>Most votes</span><b>${escapeHtml(label)} — imposter survived</b></div>`;
+    }
+    html += `</div>`;
+
+    html += `<div class="section-title">Votes</div>`;
+    state.players.forEach((p) => {
+      if (!p.vote) return;
+      const t = state.players.find((x) => x.id === p.vote);
+      html += `<div class="voterow"><b>${escapeHtml(p.name)}</b> → ${escapeHtml(t ? t.name : "?")}${p.voteReason ? `<span class="reason"> — ${escapeHtml(p.voteReason)}</span>` : ""}</div>`;
+    });
+
+    html += `<div class="section-title">Wins</div>`;
+    Object.entries(state.scores).sort((a, b) => b[1] - a[1]).forEach(([n, s]) => {
+      html += `<div class="scorerow"><span>${escapeHtml(n)}</span><b>${s}</b></div>`;
+    });
+    html += `<button id="nextRoundBtn" class="primary">Next Round</button>`;
+
+    area.innerHTML = html;
+    area.hidden = false;
+    $("nextRoundBtn").onclick = () => {
+      area.hidden = true;
+      area.innerHTML = "";
+      startRound();
+    };
+  }
+
+  $("startBtn").onclick = startGame;
+  $("playerName").addEventListener("keydown", (e) => { if (e.key === "Enter") startGame(); });
+</script>
+</body>
+</html>
